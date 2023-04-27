@@ -45,6 +45,7 @@ function BotManager:__init()
 	self._LastBotCheckIndex = 1
 	self._LastPlayerCheckIndex = 1
 	self._InitDone = false
+	self._UpdateBots = false
 end
 
 -- =============================================
@@ -58,13 +59,23 @@ function BotManager:OnLevelDestroy()
 	self:ResetAllBots()
 	self._ActivePlayers = {}
 	self._InitDone = false
+	self._UpdateBots = false
+end
+
+function BotManager:OnRoundOver()
+	self._UpdateBots = false
+	self:OnLevelDestroy()
+end
+
+function BotManager:OnLevelLoaded()
+	-- self._UpdateBots = true
 end
 
 ---VEXT Shared UpdateManager:Update Event
 ---@param p_DeltaTime number
 ---@param p_UpdatePass UpdatePass|integer
 function BotManager:OnUpdateManagerUpdate(p_DeltaTime, p_UpdatePass)
-	if p_UpdatePass ~= UpdatePass.UpdatePass_PostFrame then
+	if not self._UpdateBots or p_UpdatePass ~= UpdatePass.UpdatePass_PostFrame then
 		return
 	end
 
@@ -512,6 +523,7 @@ function BotManager:ConfigGlobals()
 	self._RaycastsPerActivePlayer = math.floor(s_RaycastsMax - 0.1)
 
 	self._InitDone = true
+	self._UpdateBots = true
 end
 
 ---@return number

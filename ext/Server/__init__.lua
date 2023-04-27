@@ -248,7 +248,7 @@ end
 function FunBotServer:OnUpdateManagerUpdate(p_DeltaTime, p_UpdatePass)
 	m_BotManager:OnUpdateManagerUpdate(p_DeltaTime, p_UpdatePass)
 	m_BotSpawner:OnUpdateManagerUpdate(p_DeltaTime, p_UpdatePass)
-	m_NodeEditor:OnUpdateManagerUpdate(p_DeltaTime, p_UpdatePass)
+	-- m_NodeEditor:OnUpdateManagerUpdate(p_DeltaTime, p_UpdatePass)
 end
 
 function FunBotServer:OnScoringStatEvent(p_Player, p_ObjectPlayer, p_StatEvent, p_ParamX, p_ParamY, p_Value)
@@ -315,6 +315,7 @@ function FunBotServer:OnLevelLoaded(p_LevelName, p_GameMode, p_Round, p_RoundsPe
 	m_GameDirector:OnLevelLoaded()
 	m_AirTargets:OnLevelLoaded()
 	m_BotSpawner:OnLevelLoaded(p_Round)
+	m_BotManager:OnLevelLoaded()
 end
 
 ---VEXT Shared Level:Destroy Event
@@ -326,13 +327,15 @@ function FunBotServer:OnLevelDestroy()
 	local s_OldMemory = math.floor(collectgarbage("count") / 1024)
 	collectgarbage('collect')
 	m_Logger:Write("*Collecting Garbage on Level Destroy: " ..
-	math.floor(collectgarbage("count") / 1024) .. " MB | Old Memory: " .. s_OldMemory .. " MB")
+		math.floor(collectgarbage("count") / 1024) .. " MB | Old Memory: " .. s_OldMemory .. " MB")
 end
 
 ---VEXT Server Server:RoundOver Event
 ---@param p_RoundTime number
 ---@param p_WinningTeam TeamId|integer
 function FunBotServer:OnRoundOver(p_RoundTime, p_WinningTeam)
+	m_BotManager:OnRoundOver()
+	m_BotSpawner:OnRoundOver()
 	m_GameDirector:OnRoundOver(p_RoundTime, p_WinningTeam)
 	Globals.IsInputAllowed = false
 end

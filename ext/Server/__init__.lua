@@ -66,6 +66,8 @@ local m_GameDirector = require('GameDirector')
 ---@type PermissionManager
 PermissionManager = require('PermissionManager')
 
+UpdateActive = false
+
 
 function FunBotServer:__init()
 	self.m_PlayerKilledDelay = 0
@@ -238,6 +240,9 @@ end
 ---@param p_DeltaTime number
 ---@param p_SimulationDeltaTime number
 function FunBotServer:OnEngineUpdate(p_DeltaTime, p_SimulationDeltaTime)
+	if not UpdateActive then
+		return
+	end
 	m_GameDirector:OnEngineUpdate(p_DeltaTime)
 	m_NodeEditor:OnEngineUpdate(p_DeltaTime, p_SimulationDeltaTime)
 end
@@ -246,12 +251,18 @@ end
 ---@param p_DeltaTime number
 ---@param p_UpdatePass UpdatePass|integer
 function FunBotServer:OnUpdateManagerUpdate(p_DeltaTime, p_UpdatePass)
+	if not UpdateActive then
+		return
+	end
 	m_BotManager:OnUpdateManagerUpdate(p_DeltaTime, p_UpdatePass)
 	m_BotSpawner:OnUpdateManagerUpdate(p_DeltaTime, p_UpdatePass)
 	-- m_NodeEditor:OnUpdateManagerUpdate(p_DeltaTime, p_UpdatePass)
 end
 
 function FunBotServer:OnScoringStatEvent(p_Player, p_ObjectPlayer, p_StatEvent, p_ParamX, p_ParamY, p_Value)
+	if not UpdateActive then
+		return
+	end
 	if p_StatEvent == StatEvent.StatEvent_CrateArmed then
 		m_GameDirector:OnMcomArmed(p_Player)
 	end
@@ -285,6 +296,7 @@ end
 ---@param p_Round integer
 ---@param p_RoundsPerMap integer
 function FunBotServer:OnLevelLoaded(p_LevelName, p_GameMode, p_Round, p_RoundsPerMap)
+	UpdateActive = true
 	Globals.GameMode = p_GameMode
 	local s_CustomGameMode = ServerUtils:GetCustomGameModeName()
 
@@ -320,6 +332,7 @@ end
 
 ---VEXT Shared Level:Destroy Event
 function FunBotServer:OnLevelDestroy()
+	UpdateActive = false
 	m_BotManager:OnLevelDestroy()
 	m_BotSpawner:OnLevelDestroy()
 	m_NodeEditor:OnLevelDestroy()
@@ -334,9 +347,10 @@ end
 ---@param p_RoundTime number
 ---@param p_WinningTeam TeamId|integer
 function FunBotServer:OnRoundOver(p_RoundTime, p_WinningTeam)
-	m_BotManager:OnRoundOver()
-	m_BotSpawner:OnRoundOver()
-	m_GameDirector:OnRoundOver(p_RoundTime, p_WinningTeam)
+	UpdateActive = false
+	-- m_BotManager:OnRoundOver()
+	-- m_BotSpawner:OnRoundOver()
+	-- m_GameDirector:OnRoundOver(p_RoundTime, p_WinningTeam)
 	Globals.IsInputAllowed = false
 end
 

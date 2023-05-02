@@ -59,7 +59,7 @@ function ClientBotManager:OnClientUpdateInput(p_DeltaTime)
 				for _, l_Player in pairs(PlayerManager:GetPlayersByTeam(self.m_Player.teamId)) do
 					if l_Player.soldier ~= nil and m_Utilities:isBot(l_Player) and
 						l_Player.soldier.worldTransform.trans:Distance(s_Raycast.position) < 2 then
-						NetEvents:SendLocal('Client:RequestEnterVehicle', l_Player.name)
+						NetEvents:SendUnreliableLocal('Client:RequestEnterVehicle', l_Player.name)
 						break
 					end
 				end
@@ -80,7 +80,7 @@ function ClientBotManager:OnInputPreUpdate(p_HookCtx, p_Cache, p_DeltaTime)
 			local s_CurrentLevel = p_Cache:GetLevel(s_LevelId)
 
 			if self.m_LastInputLevelsPos[i] == 0 and s_CurrentLevel > 0 then
-				NetEvents:SendLocal('Client:RequestChangeVehicleSeat', i)
+				NetEvents:SendUnreliableLocal('Client:RequestChangeVehicleSeat', i)
 			end
 
 			self.m_LastInputLevelsPos[i] = s_CurrentLevel
@@ -92,14 +92,52 @@ end
 ---@param p_Message Message
 function ClientBotManager:OnEngineMessage(p_Message)
 	if p_Message.type == MessageType.ClientLevelFinalizedMessage then
-		NetEvents:SendLocal('Client:RequestSettings')
+		NetEvents:SendUnreliableLocal('Client:RequestSettings')
 		self.m_ReadyToUpdate = true
 		m_Logger:Write("level loaded on Client")
 	end
 
+	if p_Message.type == MessageType.ClientLevelUnloadedMessage then
+		print("End of Round")
+		self.m_ReadyToUpdate = false
+	end
+
+	if p_Message.type == MessageType.UIRequestEndOfRoundMessage then
+		print("End of Round 2")
+		self.m_ReadyToUpdate = false
+	end
+
+	if p_Message.type == MessageType.UIRequestPreEndOfRoundMessage then
+		print("End of Round 3")
+		self.m_ReadyToUpdate = false
+	end
+
+	if p_Message.type == MessageType.ClientConnectionUnloadLevelMessage then
+		print("End of Round 4")
+		self.m_ReadyToUpdate = false
+	end
+
+	if p_Message.type == MessageType.UINetworkEndOfRoundBonusMessage then
+		print("End of Round 5")
+		self.m_ReadyToUpdate = false
+	end
+
+	if p_Message.type == MessageType.UIEndOfRoundReadyMessage then
+		print("End of Round 6")
+		self.m_ReadyToUpdate = false
+	end
+
+	if p_Message.type == MessageType.UIPreEndOfRoundReadyMessage then
+		print("End of Round 7")
+		self.m_ReadyToUpdate = false
+	end
+
+
 	if p_Message.type == MessageType.ClientConnectionUnloadLevelMessage or
 		p_Message.type == MessageType.ClientCharacterLocalPlayerDeletedMessage then
 		self:RegisterVars()
+		print("End of Round 99")
+		self.m_ReadyToUpdate = false
 	end
 end
 
@@ -154,7 +192,9 @@ function ClientBotManager:DoRaycast(p_Pos1, p_Pos2, p_InObjectPos1, p_InObjectPo
 end
 
 function ClientBotManager:SendRaycastResults(p_RaycastResultsToSend)
-	NetEvents:SendLocal("Botmanager:RaycastResults", p_RaycastResultsToSend)
+	if self.m_ReadyToUpdate then
+		NetEvents:SendUnreliableLocal("Botmanager:RaycastResults", p_RaycastResultsToSend)
+	end
 end
 
 ---VEXT Shared UpdateManager:Update Event
@@ -240,7 +280,7 @@ function ClientBotManager:OnUpdateManagerUpdate(p_DeltaTime, p_UpdatePass)
 	self.m_RaycastTimer = 0
 	local s_CheckCount = 0
 
-	if self.m_Player.soldier ~= nil then -- Alive. Check for enemy bots.
+	if self.m_Player.soldier ~= nil then                       -- Alive. Check for enemy bots.
 		if self.m_AliveTimer < Registry.CLIENT.SPAWN_PROTECTION then -- Wait 2s (spawn-protection).
 			self.m_AliveTimer = self.m_AliveTimer + p_DeltaTime
 			self:SendRaycastResults(s_RaycastResultsToSend)
@@ -321,7 +361,7 @@ function ClientBotManager:OnUpdateManagerUpdate(p_DeltaTime, p_UpdatePass)
 			::continue_enemy_loop::
 		end
 	elseif self.m_Player.corpse ~= nil and not self.m_Player.corpse.isDead then -- Dead. Check for revive botsAttackBots.
-		self.m_AliveTimer = 0.5 -- Add a little delay.
+		self.m_AliveTimer = 0.5                                              -- Add a little delay.
 		local s_TeamMates = PlayerManager:GetPlayersByTeam(self.m_Player.teamId)
 
 		if self.m_LastIndex >= #s_TeamMates then

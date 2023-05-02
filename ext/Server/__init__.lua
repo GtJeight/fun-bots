@@ -296,6 +296,10 @@ end
 ---@param p_Round integer
 ---@param p_RoundsPerMap integer
 function FunBotServer:OnLevelLoaded(p_LevelName, p_GameMode, p_Round, p_RoundsPerMap)
+	Events:Subscribe('Engine:Update', self, self.OnEngineUpdate)
+	Events:Subscribe('UpdateManager:Update', self, self.OnUpdateManagerUpdate)
+	NetEvents:Subscribe("Botmanager:RaycastResults", self, self.OnClientRaycastResults)
+
 	UpdateActive = true
 	Globals.GameMode = p_GameMode
 	local s_CustomGameMode = ServerUtils:GetCustomGameModeName()
@@ -332,6 +336,9 @@ end
 
 ---VEXT Shared Level:Destroy Event
 function FunBotServer:OnLevelDestroy()
+	Events:Unsubscribe('Engine:Update')
+	Events:Unsubscribe('UpdateManager:Update')
+	NetEvents:Unsubscribe("Botmanager:RaycastResults")
 	UpdateActive = false
 	m_BotManager:OnLevelDestroy()
 	m_BotSpawner:OnLevelDestroy()
@@ -348,6 +355,9 @@ end
 ---@param p_WinningTeam TeamId|integer
 function FunBotServer:OnRoundOver(p_RoundTime, p_WinningTeam)
 	UpdateActive = false
+	Events:Unsubscribe('UpdateManager:Update')
+	Events:Unsubscribe('Engine:Update')
+	NetEvents:Unsubscribe("Botmanager:RaycastResults")
 	-- m_BotManager:OnRoundOver()
 	-- m_BotSpawner:OnRoundOver()
 	-- m_GameDirector:OnRoundOver(p_RoundTime, p_WinningTeam)
@@ -521,6 +531,9 @@ end
 ---@param p_Hit RayCastHit
 ---@param p_GiverInfo DamageGiverInfo
 function FunBotServer:OnBulletEntityCollision(p_HookCtx, p_Entity, p_Hit, p_GiverInfo)
+	if not UpdateActive then
+		return
+	end
 	if Registry.COMMON.USE_BUGGED_HITBOXES then
 		return
 	end

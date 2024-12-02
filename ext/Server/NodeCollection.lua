@@ -1,3 +1,17 @@
+---@class Waypoint
+---@field ID string
+---@field Index integer
+---@field Position Vec3
+---@field PathIndex integer
+---@field PointIndex integer
+---@field InputVar integer
+---@field SpeedMode integer
+---@field ExtraMode integer
+---@field OptValue integer
+---@field Data table<string, table>
+---@field Previous nil|Waypoint
+---@field Next nil|Waypoint
+
 ---@class NodeCollection
 ---@overload fun(p_DisableServerEvents?: boolean):NodeCollection
 NodeCollection = class 'NodeCollection'
@@ -27,12 +41,19 @@ function NodeCollection:InitVars()
 
 	-- Data for Save-Statemachine.
 	self._SaveActive = false
+	self._LoadActive = false
 	self._SaveStateMachineCounter = 0
+	self._LoadStateMachineCounter = 0
 	self._SaveTracesQueryStrings = {}
 	self._SaveTracesQueryStringsDone = 0
 	self._SavedPathCount = 0
 	self._SaveTraceBatchQueries = {}
 	self._SaveTraceQueriesDone = 0
+	self._LoadPathCount = 0
+	self._LoadWaypointCount = 0
+	self._LoadFirstWaypoint = nil
+	self._LoadLastWaypoint = nil
+	self._LoadLastPathindex = -1
 end
 
 -----------------------------
@@ -44,10 +65,9 @@ function NodeCollection:Create(p_Data, p_Authoritative)
 	local s_InputVar = 3
 
 	-- Setup defaults for a blank node.
-	---@class Waypoint
+	---@type Waypoint
 	local s_Waypoint = {
 		ID = string.format('p_%d', s_NewIndex), -- New generated ID for internal storage.
-		OriginalID = nil,                 -- Original ID from database.
 		Index = s_NewIndex,               -- New generated ID in numerical form.
 		Position = Vec3(0, 0, 0),
 		PathIndex = 0,                    -- Path #
@@ -57,10 +77,8 @@ function NodeCollection:Create(p_Data, p_Authoritative)
 		ExtraMode = (s_InputVar >> 4) & 0xF,
 		OptValue = (s_InputVar >> 8) & 0xFF,
 		Data = {},
-		Distance = nil, -- Current distance to player.
-		Updated = false, -- If true, needs to be sent to server for saving.
-		Previous = false, -- Tree navigation.
-		Next = false,
+		Previous = nil, -- Tree navigation.
+		Next = nil,
 	}
 
 	if p_Data ~= nil then
@@ -139,7 +157,8 @@ function NodeCollection:Register(p_Waypoint)
 	return p_Waypoint
 end
 
----@return boolean
+---@param p_SelectionId integer
+---@return Waypoint|boolean
 ---@return string
 function NodeCollection:Add(p_SelectionId)
 	local s_Selection = self:GetSelected(p_SelectionId)
@@ -264,13 +283,13 @@ function NodeCollection:InsertBefore(p_ReferrenceWaypoint, p_Waypoint)
 	self:RecalculateIndexes(p_Waypoint.Previous or p_Waypoint)
 end
 
----@param p_Waypoint Waypoint|nil
+---@param p_Waypoint Waypoint|boolean
 function NodeCollection:RecalculateIndexes(p_Waypoint)
 	m_Logger:Write('RecalculateIndexes Starting...')
 
 	local s_Counter = 0
 
-	if p_Waypoint == nil then
+	if not p_Waypoint then
 		for i = 1, #self._Waypoints do
 			self._Waypoints[i] = self:_processWaypointRecalc(self._Waypoints[i])
 			s_Counter = s_Counter + 1
@@ -329,7 +348,6 @@ function NodeCollection:_processWaypointRecalc(p_Waypoint)
 	if p_Waypoint.PointIndex ~= s_LastPointIndex + 1 then
 		s_LastPointIndex = s_LastPointIndex + 1
 		p_Waypoint.PointIndex = s_LastPointIndex
-		p_Waypoint.Updated = true
 	end
 
 	return p_Waypoint
@@ -481,9 +499,10 @@ end
 -- p_Waypoints | Waypoint or {Waypoint} | Can be a single waypoint or a table of waypoints, `nil` defaults to current selection.
 -- p_LinkID | string | a waypoint ID, must not be `nil`.
 -- p_OneWay | boolean | if true, the connection is only made on this node, prevents infinite recursion.
----@param p_Waypoints? Waypoint|Waypoint[]
----@param p_LinkID string
----@param p_OneWay? boolean
+---@param p_SelectionId integer
+---@param p_Waypoints? Waypoint|Waypoint[]|nil
+---@param p_LinkID string|nil
+---@param p_OneWay boolean|nil
 ---@return boolean
 ---@return string
 function NodeCollection:Link(p_SelectionId, p_Waypoints, p_LinkID, p_OneWay)
@@ -529,9 +548,10 @@ end
 -- p_Waypoints | Waypoint or {Waypoint} | Can be a single waypoint or a table of waypoints, `nil` defaults to current selection.
 -- p_LinkID | string | a waypoint ID to remove, can be `nil` to clear connections.
 -- p_OneWay | boolean | if true, the connection is only made on this node, prevents infinite recursion.
----@param p_Waypoints Waypoint|Waypoint[]|nil
+---@param p_SelectionId integer
+---@param p_Waypoints? Waypoint|Waypoint[]|nil
 ---@param p_LinkID string|nil
----@param p_OneWay? boolean
+---@param p_OneWay boolean|nil
 ---@return boolean
 ---@return string
 function NodeCollection:Unlink(p_SelectionId, p_Waypoints, p_LinkID, p_OneWay)
@@ -612,7 +632,7 @@ end
 
 ---@param p_Waypoint? integer|string|Waypoint
 ---@param p_PathIndex? integer
----@return Waypoint
+---@return Waypoint|nil|Waypoint[]
 function NodeCollection:Get(p_Waypoint, p_PathIndex)
 	if p_Waypoint ~= nil then
 		if p_PathIndex ~= nil then
@@ -741,9 +761,10 @@ end
 -----------------------------
 -- Selection.
 
----@param p_Waypoint? Waypoint
----@param p_PathIndex? integer
-function NodeCollection:Select(p_SelectionId, p_Waypoint, p_PathIndex)
+---@param p_SelectionId integer
+---@param p_WaypointId integer|string|Waypoint
+---@param p_PathIndex integer|nil
+function NodeCollection:Select(p_SelectionId, p_WaypointId, p_PathIndex)
 	if not p_SelectionId then
 		p_SelectionId = 1
 	end
@@ -751,18 +772,21 @@ function NodeCollection:Select(p_SelectionId, p_Waypoint, p_PathIndex)
 		self._SelectedWaypoints[p_SelectionId] = {}
 	end
 
-	if p_Waypoint == nil then return end
+	if p_WaypointId == nil then return end
 
-	p_Waypoint = self:Get(p_Waypoint, p_PathIndex)
+	local s_Waypoint = self:Get(p_WaypointId, p_PathIndex)
 
-	if p_Waypoint == nil then return end
+	if s_Waypoint == nil then
+		return
+	end
 
-	self._SelectedWaypoints[p_SelectionId][p_Waypoint.ID] = p_Waypoint
+	self._SelectedWaypoints[p_SelectionId][s_Waypoint.ID] = s_Waypoint
 end
 
----@param p_Waypoint? Waypoint
----@param p_PathIndex? integer
-function NodeCollection:Deselect(p_SelectionId, p_Waypoint, p_PathIndex)
+---@param p_SelectionId integer
+---@param p_WaypointId integer|string
+---@param p_PathIndex integer|nil
+function NodeCollection:Deselect(p_SelectionId, p_WaypointId, p_PathIndex)
 	if not p_SelectionId then
 		p_SelectionId = 1
 	end
@@ -770,14 +794,14 @@ function NodeCollection:Deselect(p_SelectionId, p_Waypoint, p_PathIndex)
 		self._SelectedWaypoints[p_SelectionId] = {}
 	end
 
-	if p_Waypoint == nil then
+	if p_WaypointId == nil then
 		self:ClearSelection(p_SelectionId)
 	else
-		p_Waypoint = self:Get(p_Waypoint, p_PathIndex)
+		local s_Waypoint = self:Get(p_WaypointId, p_PathIndex)
 
-		if p_Waypoint == nil then return end
+		if s_Waypoint == nil then return end
 
-		self._SelectedWaypoints[p_SelectionId][p_Waypoint.ID] = nil
+		self._SelectedWaypoints[p_SelectionId][s_Waypoint.ID] = nil
 	end
 end
 
@@ -902,9 +926,13 @@ function NodeCollection:MergeSelection(p_SelectionId)
 	return true, 'Success'
 end
 
+---comment
+---@param p_Player Player
+---@return boolean
+---@return string
 function NodeCollection:TeleportToEdge(p_Player)
 	if p_Player == nil or p_Player.soldier == nil then
-		return
+		return false, 'nil params'
 	end
 
 	local s_Transform = p_Player.soldier.worldTransform:Clone()
@@ -917,10 +945,10 @@ function NodeCollection:TeleportToEdge(p_Player)
 	end
 
 	local s_CurrentWaypoint = s_Selection[1]
-	s_First = self:GetFirst(s_CurrentWaypoint.PathIndex)
-	s_Last = self:GetLast(s_CurrentWaypoint.PathIndex)
-	s_FirstDistance = 0
-	s_LastDistance = 0
+	local s_First = self:GetFirst(s_CurrentWaypoint.PathIndex)
+	local s_Last = self:GetLast(s_CurrentWaypoint.PathIndex)
+	local s_FirstDistance = 0
+	local s_LastDistance = 0
 
 	if s_First then
 		s_FirstDistance = s_Transform.trans:Distance(s_First.Position)
@@ -928,6 +956,10 @@ function NodeCollection:TeleportToEdge(p_Player)
 
 	if s_Last then
 		s_LastDistance = s_Transform.trans:Distance(s_Last.Position)
+	end
+
+	if not s_First or not s_Last then
+		return false, 'Invalid selection'
 	end
 
 	if s_FirstDistance > s_LastDistance then
@@ -940,6 +972,9 @@ function NodeCollection:TeleportToEdge(p_Player)
 	return true, 'Success'
 end
 
+---@param p_SelectionId integer
+---@return boolean
+---@return string
 function NodeCollection:SplitSelection(p_SelectionId)
 	local s_Selection = self:GetSelected(p_SelectionId)
 
@@ -1026,92 +1061,7 @@ end
 -- Save/Load.
 
 function NodeCollection:Load(p_LevelName, p_GameMode)
-	if p_GameMode ~= nil and p_LevelName ~= nil then
-		self._MapName = p_LevelName .. '_' .. p_GameMode
-		self._MapName = self._MapName:gsub(' ', '_')
-	end
 
-	if self._MapName == '' or self._MapName == nil then
-		m_Logger:Error('Mapname not set. Abort Load')
-		return
-	end
-
-	m_Logger:Write('Load: ' .. self._MapName)
-
-	if not SQL:Open() then
-		m_Logger:Error('Failed to open SQL. ' .. SQL:Error())
-		return
-	end
-
-	local s_Results = SQL:Query("select name from sqlite_master where type='table' and name='" .. self._MapName .. "_table'")
-	if not s_Results or #s_Results == 0 then
-		m_Logger:Write('Map not available')
-		SQL:Close()
-		return
-	end
-
-	-- Fetch all rows from the table.
-	local s_Results = SQL:Query('SELECT * FROM ' .. self._MapName .. '_table ORDER BY pathIndex, pointIndex ASC')
-
-	if not s_Results then
-		m_Logger:Error('Failed to retrieve waypoints for map [' .. self._MapName .. ']: ' .. SQL:Error())
-		SQL:Close()
-		return
-	end
-
-	self:Clear()
-	local s_PathCount = 0
-	local s_WaypointCount = 0
-	local s_FirstWaypoint = nil
-	local s_LastWaypoint = nil
-	local s_LastPathindex = -1
-
-	for _, l_Row in pairs(s_Results) do
-		if l_Row['pathIndex'] ~= s_LastPathindex then
-			s_PathCount = s_PathCount + 1
-			s_LastPathindex = l_Row['pathIndex']
-		end
-
-		local s_Waypoint = {
-			OriginalID = l_Row['id'],
-			Position = Vec3(l_Row['transX'], l_Row['transY'], l_Row['transZ']),
-			PathIndex = l_Row['pathIndex'],
-			PointIndex = l_Row['pointIndex'],
-			InputVar = l_Row['inputVar'],
-			SpeedMode = l_Row['inputVar'] & 0xF,
-			ExtraMode = (l_Row['inputVar'] >> 4) & 0xF,
-			OptValue = (l_Row['inputVar'] >> 8) & 0xFF,
-			Data = json.decode(l_Row['data'] or '{}'),
-		}
-
-		if s_FirstWaypoint == nil then
-			s_FirstWaypoint = s_Waypoint
-		end
-
-		if s_LastWaypoint ~= nil then
-			s_Waypoint.Previous = s_LastWaypoint.ID
-			s_LastWaypoint.Next = s_Waypoint.ID
-		end
-
-		s_Waypoint = self:Create(s_Waypoint, true)
-		s_LastWaypoint = s_Waypoint
-		s_WaypointCount = s_WaypointCount + 1
-	end
-
-	SQL:Close()
-	self:RecalculateIndexes(s_LastWaypoint)
-	self:ProcessMetadata()
-
-	-- We're on the server.
-	-- if Global ~= nil then
-	-- Global.wayPoints = self._WaypointsByPathIndex
-	-- Global.activeTraceIndexes = pathCount
-	-- end
-
-	m_Logger:Write('Load -> Paths: ' .. tostring(s_PathCount) .. ' | Waypoints: ' .. tostring(s_WaypointCount))
-
-	ChatManager:Yell(Language:I18N('Loaded %d paths with %d waypoints for map %s', s_PathCount, s_WaypointCount,
-		self._MapName), 5.5)
 end
 
 function NodeCollection:UpdateSaving()
@@ -1120,6 +1070,129 @@ function NodeCollection:UpdateSaving()
 		return true
 	end
 	return false
+end
+
+function NodeCollection:StartLoad(p_Level, p_Gamemode)
+	self._LevelNameToLoad = p_Level
+	self._GameModeToLoad = p_Gamemode
+	self._LoadStateMachineCounter = 0
+	self._LoadActive = true
+end
+
+function NodeCollection:UpdateLoading()
+	if self._LoadActive then
+		self:ProcessAllDataToLoad()
+		return true
+	end
+	return false
+end
+
+function NodeCollection:ProcessAllDataToLoad()
+	-- preparation steps
+	if self._LoadStateMachineCounter == 0 then
+		if self._GameModeToLoad ~= nil and self._LevelNameToLoad ~= nil then
+			self._MapName = self._LevelNameToLoad .. '_' .. self._GameModeToLoad
+			self._MapName = self._MapName:gsub(' ', '_')
+		end
+
+		if self._MapName == '' or self._MapName == nil then
+			m_Logger:Error('Mapname not set. Abort Load')
+			self._LoadActive = false
+			return
+		end
+
+		m_Logger:Write('Load: ' .. self._MapName)
+
+		if not SQL:Open() then
+			m_Logger:Error('Failed to open SQL. ' .. SQL:Error())
+			self._LoadActive = false
+			return
+		end
+
+		local s_Results = SQL:Query("select name from sqlite_master where type='table' and name='" .. self._MapName .. "_table'")
+		if not s_Results or #s_Results == 0 then
+			m_Logger:Write('Map not available')
+			SQL:Close()
+			self._LoadActive = false
+			return
+		end
+
+		-- prepare vars
+		self:Clear()
+		self._LoadPathCount = 0
+		self._LoadWaypointCount = 0
+		self._LoadFirstWaypoint = nil
+		self._LoadLastWaypoint = nil
+		self._LoadLastPathindex = -1
+
+		self._LoadStateMachineCounter = 10
+
+		-- start to actually load
+	elseif self._LoadStateMachineCounter == 10 then
+		-- Fetch all rows from the table.
+		local s_MaxEntries = Registry.COMMON.MAX_NUMBER_OF_NODES_PER_CYCLE
+		local s_Offset = self._LoadWaypointCount
+		local s_Results = SQL:Query('SELECT * FROM ' .. self._MapName .. '_table ORDER BY pathIndex, pointIndex ASC LIMIT ' .. tostring(s_MaxEntries) .. ' OFFSET ' .. tostring(s_Offset))
+
+		if not s_Results then
+			m_Logger:Error('Failed to retrieve waypoints for map [' .. self._MapName .. ']: ' .. SQL:Error())
+			SQL:Close()
+			self._LoadActive = false
+			return
+		end
+
+		for _, l_Row in pairs(s_Results) do
+			if l_Row['pathIndex'] ~= self._LoadLastPathindex then
+				self._LoadPathCount = self._LoadPathCount + 1
+				self._LoadLastPathindex = l_Row['pathIndex']
+			end
+
+			local s_Waypoint = {
+				Position = Vec3(l_Row['transX'], l_Row['transY'], l_Row['transZ']),
+				PathIndex = l_Row['pathIndex'],
+				PointIndex = l_Row['pointIndex'],
+				InputVar = l_Row['inputVar'],
+				SpeedMode = l_Row['inputVar'] & 0xF,
+				ExtraMode = (l_Row['inputVar'] >> 4) & 0xF,
+				OptValue = (l_Row['inputVar'] >> 8) & 0xFF,
+				Data = json.decode(l_Row['data'] or '{}'),
+			}
+
+			if self._LoadFirstWaypoint == nil then
+				self._LoadFirstWaypoint = s_Waypoint
+			end
+
+			if self._LoadLastWaypoint ~= nil then
+				s_Waypoint.Previous = self._LoadLastWaypoint.ID
+				self._LoadLastWaypoint.Next = s_Waypoint.ID
+			end
+
+			s_Waypoint = self:Create(s_Waypoint, true)
+			self._LoadLastWaypoint = s_Waypoint
+			self._LoadWaypointCount = self._LoadWaypointCount + 1
+		end
+
+		if #s_Results < s_MaxEntries then
+			self._LoadStateMachineCounter = 20
+		end
+	elseif self._LoadStateMachineCounter == 20 then
+		SQL:Close()
+		self:RecalculateIndexes(self._LoadLastWaypoint)
+		self._LoadStateMachineCounter = 30
+	elseif self._LoadStateMachineCounter == 30 then
+		self:ProcessMetadata()
+		self._LoadStateMachineCounter = 40
+	elseif self._LoadStateMachineCounter == 40 then
+		m_Logger:Write('Load -> Paths: ' .. tostring(self._LoadPathCount) .. ' | Waypoints: ' .. tostring(self._LoadWaypointCount))
+
+		ChatManager:Yell(Language:I18N('Loaded %d paths with %d waypoints for map %s', self._LoadPathCount, self._LoadWaypointCount,
+			self._MapName), 5.5)
+		self._LoadStateMachineCounter = 50
+	elseif self._LoadStateMachineCounter == 50 then
+		-- all done
+		self._LoadActive = false
+		Events:Dispatch('NodeCollection:FinishedLoading')
+	end
 end
 
 function NodeCollection:ProcessAllDataToSave()
@@ -1219,23 +1292,31 @@ function NodeCollection:ProcessAllDataToSave()
 		self._SaveTraceQueriesDone = 0
 		self._InsertQuery = 'INSERT INTO ' ..
 			self._MapName .. '_table (pathIndex, pointIndex, transX, transY, transZ, inputVar, data) VALUES '
-		self._Values = ''
+		self._ValuesTable = nil
+		self._ValuesAdded = 0
 	elseif self._SaveStateMachineCounter == 2 then
 		local s_QueriesTotal = #self._SaveTraceBatchQueries
 		if s_QueriesTotal > self._SaveTraceQueriesDone then
 			local s_StringLenght = #self._InsertQuery
 			local s_QueryCount = 0
 
-			if self._Values == '' then
-				self._Values = self._SaveTraceBatchQueries[self._SaveTraceQueriesDone + 1]
+			if self._ValuesTable == nil then
+				self._ValuesTable = {}
+				table.insert(self._ValuesTable, self._SaveTraceBatchQueries[self._SaveTraceQueriesDone + 1])
+				self._ValuesAdded = self._ValuesAdded + 1
+
 				self._SaveTraceQueriesDone = self._SaveTraceQueriesDone + 1
 			end
-			s_StringLenght = s_StringLenght + #self._Values
+
 			while self._SaveTraceQueriesDone < s_QueriesTotal and
-				(s_StringLenght + #self._SaveTraceBatchQueries[self._SaveTraceQueriesDone + 1] + 1) < 230000 do -- Max: 230000
+				self._ValuesAdded < 10000
+			do
 				local s_NewString = self._SaveTraceBatchQueries[self._SaveTraceQueriesDone + 1]
-				self._Values = self._Values .. ',' .. s_NewString
-				s_StringLenght = s_StringLenght + #s_NewString + 1
+
+				table.insert(self._ValuesTable, ',')
+				table.insert(self._ValuesTable, s_NewString)
+				self._ValuesAdded = self._ValuesAdded + 1
+
 				self._SaveTraceQueriesDone = self._SaveTraceQueriesDone + 1
 				s_QueryCount = s_QueryCount + 1
 				if s_QueryCount >= 100 then -- Only do 100 queries per cycle.
@@ -1243,9 +1324,11 @@ function NodeCollection:ProcessAllDataToSave()
 				end
 			end
 
-			table.insert(self._SaveTracesQueryStrings, self._InsertQuery .. self._Values)
+			local s_Values = table.concat(self._ValuesTable)
+			table.insert(self._SaveTracesQueryStrings, self._InsertQuery .. s_Values)
 
-			self._Values = ''
+			self._ValuesTable = nil
+			self._ValuesAdded = 0
 
 			return -- Do this again.
 		end
@@ -1377,7 +1460,11 @@ function NodeCollection:ObjectiveDirection(p_Waypoint, p_Objective, p_InVehicle)
 			if s_CurrentWaypoint[s_Direction].Data.Links ~= nil then
 				for _, l_LinkID in pairs(s_CurrentWaypoint[s_Direction].Data.Links) do
 					local s_Link = self:Get(l_LinkID)
-					local s_PathWaypoint = self:GetFirst(s_Link.PathIndex)
+
+					local s_PathWaypoint = nil
+					if s_Link then
+						s_PathWaypoint = self:GetFirst(s_Link.PathIndex)
+					end
 
 					if s_PathWaypoint ~= nil and
 						s_PathWaypoint.Data.Objectives ~= nil and

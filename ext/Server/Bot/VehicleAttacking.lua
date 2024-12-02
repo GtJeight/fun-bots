@@ -11,6 +11,7 @@ function VehicleAttacking:__init()
 	-- Nothing to do.
 end
 
+---@param p_Bot Bot
 function VehicleAttacking:UpdateAttackingVehicle(p_Bot)
 	if p_Bot._ShootPlayer.soldier ~= nil and p_Bot._Shoot then
 		-- jets should only attack other vehicles for now
@@ -47,6 +48,7 @@ function VehicleAttacking:UpdateAttackingVehicle(p_Bot)
 									or p_Bot._ShootPlayerVehicleType == VehicleTypes.MobileArtillery
 									or p_Bot._ShootPlayerVehicleType == VehicleTypes.AntiAir
 									or p_Bot._ShootPlayerVehicleType == VehicleTypes.LightVehicle
+									or p_Bot._ShootPlayerVehicleType == VehicleTypes.LightAA
 									or p_Bot._ShootPlayerVehicleType == VehicleTypes.NoArmorVehicle
 									or p_Bot._ShootPlayerVehicleType == VehicleTypes.MavBot)
 							then
@@ -115,24 +117,25 @@ function VehicleAttacking:UpdateAttackingVehicle(p_Bot)
 						p_Bot._ShotTimer = 0.0
 					end
 					if p_Bot._ShotTimer >= 0.5 and p_Bot._VehicleReadyToShoot then
-						p_Bot:_SetInput(EntryInputActionEnum.EIAFire, 1)
+						self:Fire(p_Bot)
 					end
 				elseif m_Vehicles:IsVehicleType(p_Bot.m_ActiveVehicle, VehicleTypes.Plane) then
 					if p_Bot._ShotTimer >= 1.6 then
 						p_Bot._ShotTimer = 0.0
 					end
 					if p_Bot._ShotTimer >= 0.3 and p_Bot._VehicleReadyToShoot then
-						p_Bot:_SetInput(EntryInputActionEnum.EIAFire, 1)
+						self:Fire(p_Bot)
 					end
 				else
 					if p_Bot._ShotTimer >= 0.6 then
 						p_Bot._ShotTimer = 0.0
 					end
 					if p_Bot._ShotTimer >= 0.3 and p_Bot._VehicleReadyToShoot then
-						p_Bot:_SetInput(EntryInputActionEnum.EIAFire, 1)
+						self:Fire(p_Bot)
 					end
 				end
 				p_Bot._ShotTimer = p_Bot._ShotTimer + Registry.BOT.BOT_UPDATE_CYCLE
+				p_Bot._SoundTimer = p_Bot._SoundTimer + Registry.BOT.BOT_UPDATE_CYCLE
 			end
 		else
 			p_Bot._TargetPitch = 0.0
@@ -148,6 +151,12 @@ function VehicleAttacking:UpdateAttackingVehicle(p_Bot)
 	p_Bot._VehicleSecondaryWeaponTimer = math.max(p_Bot._VehicleSecondaryWeaponTimer - Registry.BOT.BOT_UPDATE_CYCLE, 0)
 end
 
+function VehicleAttacking:Fire(p_Bot)
+	p_Bot._SoundTimer = 0.0
+	p_Bot:_SetInput(EntryInputActionEnum.EIAFire, 1)
+end
+
+---@param p_Bot Bot
 function VehicleAttacking:UpdateAttackStationaryAAVehicle(p_Bot)
 	if p_Bot._VehicleReadyToShoot then
 		p_Bot:_SetInput(EntryInputActionEnum.EIAFire, 1)

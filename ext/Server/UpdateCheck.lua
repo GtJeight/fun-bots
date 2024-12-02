@@ -6,6 +6,31 @@ local ApiUrls = {
 	dev = 'https://api.github.com/repos/Joe91/fun-bots/tags?per_page=1'
 }
 
+
+-- Parse ISO 8601 timestamp (https://stackoverflow.com/questions/7911322/lua-iso-8601-datetime-parsing-pattern).
+-- @author Firjen <https://github.com/Firjens>
+local function ParseOffset(p_String)
+	local s_Pattern = "(%d+)%-(%d+)%-(%d+)%a(%d+)%:(%d+)%:([%d%.]+)([Z%+%-])(%d?%d?)%:?(%d?%d?)"
+	local s_Year, s_Month, s_Day, s_Hour, s_Minute, s_Seconds, s_Offsetsign, s_Offsethour, s_Offsetmin = p_String:match(s_Pattern)
+	local s_Timestamp = os.time { year = s_Year, month = s_Month,
+		day = s_Day, hour = s_Hour, min = s_Minute, sec = s_Seconds }
+	local s_Offset = 0
+
+	if s_Offsetsign ~= 'Z' then
+		s_Offset = tonumber(s_Offsethour) * 60 + tonumber(s_Offsetmin)
+
+		if s_Offset == "-" then s_Offset = s_Offset * -1 end
+	end
+
+	return s_Timestamp + s_Offset
+end
+
+---comment
+---@param p_Result integer
+---@param p_UpdateUrl string|nil
+---@param p_RemoteVersion string|nil
+---@param p_RemoteTimestamp string|nil
+---@param p_CurrentVersion string|nil
 local function UpdateFinished(p_Result, p_UpdateUrl, p_RemoteVersion, p_RemoteTimestamp, p_CurrentVersion)
 	-- Check if the update was successful.
 	if p_Result < 0 then
@@ -38,7 +63,7 @@ local function UpdateFinished(p_Result, p_UpdateUrl, p_RemoteVersion, p_RemoteTi
 	end
 
 	if p_Result == 3 then
-		print('[UPDATE] You are running the latest version') --To-do: Move this to a logger.
+		print('[UPDATE] You are running the latest version')        --To-do: Move this to a logger.
 		print('[UPDATE] There might be a new version on another Channel') --To-do: Move this to a logger.
 	end
 end
@@ -102,7 +127,12 @@ local function CompareVersion(p_CurrentVersion, p_ExternalVersion)
 end
 
 -- Callback for updateCheck async request.
+---@param httpRequest HttpResponse|nil
 local function updateCheckCB(httpRequest)
+	if httpRequest == nil then
+		UpdateFinished(-1, nil, nil, nil, nil)
+		return
+	end
 	-- Parse JSON.
 	local s_EndpointJSON = json.decode(httpRequest.body)
 
@@ -113,7 +143,7 @@ local function updateCheckCB(httpRequest)
 
 	-- Response is different based on the cycle request.
 	--To-do: Make the current version better, as it currently checks strings. It should check an incremental value instead.
-	local s_CurrentVersion = RegistryManager:GetUtil():GetVersion()
+	local s_CurrentVersion = Registry.GetVersion()
 	local s_RemoteVersion = nil
 	local s_RemoteTimestamp = nil
 	local s_RemoteUrl = nil

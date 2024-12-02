@@ -60,6 +60,18 @@ SettingsDefinition = {
 			UpdateFlag = UpdateFlag.None,
 			Category = "GENERAL"
 		},
+		{
+			Name = "BotTeamNames",
+			Text = "Bot Team Names",
+			---@type Type|integer
+			Type = Type.Boolean,
+			Reference = BotNames,
+			Value = Config.BotTeamNames,
+			Description = "If the bots shall have their names based on their team",
+			Default = false,
+			UpdateFlag = UpdateFlag.BotNames,
+			Category = "GENERAL"
+		},
 
 		-- Difficulty.
 		{
@@ -142,7 +154,7 @@ SettingsDefinition = {
 			Value = Config.DamageFactorAssault,
 			Description = "Original Damage from bots gets multiplied by this",
 			Reference = Range(0.00, 2.00, 0.10),
-			Default = 1.0,
+			Default = 0.8,
 			UpdateFlag = UpdateFlag.None,
 			Category = "DIFFICULTY"
 		},
@@ -154,7 +166,7 @@ SettingsDefinition = {
 			Value = Config.DamageFactorCarabine,
 			Description = "Original Damage from bots gets multiplied by this",
 			Reference = Range(0.00, 2.00, 0.10),
-			Default = 1.0,
+			Default = 0.8,
 			UpdateFlag = UpdateFlag.None,
 			Category = "DIFFICULTY"
 		},
@@ -166,7 +178,7 @@ SettingsDefinition = {
 			Value = Config.DamageFactorLMG,
 			Description = "Original Damage from bots gets multiplied by this",
 			Reference = Range(0.00, 2.00, 0.10),
-			Default = 1.0,
+			Default = 0.8,
 			UpdateFlag = UpdateFlag.None,
 			Category = "DIFFICULTY"
 		},
@@ -178,7 +190,7 @@ SettingsDefinition = {
 			Value = Config.DamageFactorPDW,
 			Description = "Original Damage from bots gets multiplied by this",
 			Reference = Range(0.00, 2.00, 0.10),
-			Default = 1.0,
+			Default = 0.8,
 			UpdateFlag = UpdateFlag.None,
 			Category = "DIFFICULTY"
 		},
@@ -190,7 +202,7 @@ SettingsDefinition = {
 			Value = Config.DamageFactorSniper,
 			Description = "Original Damage from bots gets multiplied by this",
 			Reference = Range(0.00, 2.00, 0.10),
-			Default = 1.0,
+			Default = 0.8,
 			UpdateFlag = UpdateFlag.None,
 			Category = "DIFFICULTY"
 		},
@@ -202,7 +214,7 @@ SettingsDefinition = {
 			Value = Config.DamageFactorShotgun,
 			Description = "Original Damage from bots gets multiplied by this",
 			Reference = Range(0.00, 2.00, 0.10),
-			Default = 1.0,
+			Default = 0.8,
 			UpdateFlag = UpdateFlag.None,
 			Category = "DIFFICULTY"
 		},
@@ -214,7 +226,7 @@ SettingsDefinition = {
 			Value = Config.DamageFactorPistol,
 			Description = "Original Damage from bots gets multiplied by this",
 			Reference = Range(0.00, 2.00, 0.10),
-			Default = 1.0,
+			Default = 0.8,
 			UpdateFlag = UpdateFlag.None,
 			Category = "DIFFICULTY"
 		},
@@ -238,7 +250,7 @@ SettingsDefinition = {
 			Value = Config.VehicleAimWorsening,
 			Description = "Make bots in vehicles aim worse: for difficulty: 0 = no offset (hard), 1 or even greater = more sway (easy)",
 			Reference = Range(0.00, 10.00, 0.05),
-			Default = 0.0,
+			Default = 0.05,
 			UpdateFlag = UpdateFlag.None,
 			Category = "DIFFICULTY"
 		},
@@ -250,7 +262,7 @@ SettingsDefinition = {
 			Value = Config.VehicleAirAimWorsening,
 			Description = "See VehicleAimWorsening, only for Air-Vehicles",
 			Reference = Range(0.00, 10.00, 0.05),
-			Default = 0.0,
+			Default = 0.02,
 			UpdateFlag = UpdateFlag.None,
 			Category = "DIFFICULTY"
 		},
@@ -613,7 +625,7 @@ SettingsDefinition = {
 			Value = Config.FovForShooting,
 			Description = "Degrees of FOV of Bot",
 			Reference = Range(0.00, 360.00, 1.0),
-			Default = 180,
+			Default = 160,
 			UpdateFlag = UpdateFlag.None,
 			Category = "BEHAVIOUR"
 		},
@@ -819,7 +831,7 @@ SettingsDefinition = {
 			Value = Config.DeployCycle,
 			Description = "Time between deployment of bots in seconds",
 			Reference = Range(1.00, 600.00, 5.0),
-			Default = 60,
+			Default = 90,
 			UpdateFlag = UpdateFlag.None,
 			Category = "BEHAVIOUR"
 		},
@@ -1019,6 +1031,17 @@ SettingsDefinition = {
 			Description = "Max Range of Stationary AA",
 			Reference = Range(50, 1500.00, 5),
 			Default = 300,
+			UpdateFlag = UpdateFlag.None,
+			Category = "VEHICLE"
+		},
+		{
+			Name = "EnableParadrop",
+			Text = "Enable vehicle paradrop",
+			---@type Type|integer
+			Type = Type.Boolean,
+			Value = Config.EnableParadrop,
+			Description = "Bots can spawn on vehicles inside C-130 gunship",
+			Default = false,
 			UpdateFlag = UpdateFlag.None,
 			Category = "VEHICLE"
 		},
@@ -1280,8 +1303,8 @@ SettingsDefinition = {
 			Type = Type.Integer,
 			Value = Config.DistanceForDirectAttack,
 			Description = "Distance bots can hear you at",
-			Reference = Range(0.00, 1000.00, 1.0),
-			Default = 8,
+			Reference = Range(0.00, 20.00, 1.0),
+			Default = 6,
 			UpdateFlag = UpdateFlag.None,
 			Category = "ADVANCED"
 		},
@@ -1459,6 +1482,17 @@ SettingsDefinition = {
 			UpdateFlag = UpdateFlag.None,
 			Category = "ADVANCED"
 		},
+		{
+			Name = "DefendObjectives",
+			Text = "Defend objectives",
+			---@type Type|integer
+			Type = Type.Boolean,
+			Value = Config.DefendObjectives,
+			Description = "Bots will stay on captured objectives and defend them",
+			Default = true,
+			UpdateFlag = UpdateFlag.None,
+			Category = "ADVANCED"
+		},
 
 		-- Expert Properties.
 		{
@@ -1479,9 +1513,9 @@ SettingsDefinition = {
 			---@type Type|integer
 			Type = Type.Float,
 			Value = Config.BotMinTimeShootAtPlayer,
-			Description = "The minimum time a bot shoots at one player for - recommended minimum 1.5, below this you will have issues",
+			Description = "The minimum time a bot shoots at one player",
 			Reference = Range(0.00, 60.00, 0.5),
-			Default = 2.5,
+			Default = 0.7,
 			UpdateFlag = UpdateFlag.None,
 			Category = "EXPERT"
 		},

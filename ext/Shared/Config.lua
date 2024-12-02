@@ -8,6 +8,7 @@ Config = {
 	BotWeapon = BotWeapons.Auto,		-- Select the weapon the bots use 
 	BotKit = BotKits.RANDOM_KIT,		-- The Kit of the Bots 
 	BotColor = BotColors.RANDOM_COLOR,	-- The Color of the Bots 
+	BotTeamNames = false,				-- If the bots shall have their names based on their team 
 
 	-- DIFFICULTY 
 	BotAimWorsening = 0.7,				-- Make bots aim worse: for difficulty: 0 = no offset (hard), 1 or even greater = more sway (easy) 
@@ -16,16 +17,16 @@ Config = {
 	BotWorseningSkill = 0.50,			-- Variation of the skill of a single bot. The higher, the worse the bots can get compared to the original settings 
 	BotSniperWorseningSkill = 0.50,		-- See BotWorseningSkill - only for BOTs using sniper bolt-action rifles 
 	ReactionTime = 0.2,					-- Additional delay for bots, dependant of skill (might also be 0) 
-	DamageFactorAssault = 1.0,			-- Original Damage from bots gets multiplied by this 
-	DamageFactorCarabine = 1.0,			-- Original Damage from bots gets multiplied by this 
-	DamageFactorLMG = 1.0,				-- Original Damage from bots gets multiplied by this 
-	DamageFactorPDW = 1.0,				-- Original Damage from bots gets multiplied by this 
-	DamageFactorSniper = 1.0,			-- Original Damage from bots gets multiplied by this 
-	DamageFactorShotgun = 1.0,			-- Original Damage from bots gets multiplied by this 
-	DamageFactorPistol = 1.0,			-- Original Damage from bots gets multiplied by this 
+	DamageFactorAssault = 0.8,			-- Original Damage from bots gets multiplied by this 
+	DamageFactorCarabine = 0.8,			-- Original Damage from bots gets multiplied by this 
+	DamageFactorLMG = 0.8,				-- Original Damage from bots gets multiplied by this 
+	DamageFactorPDW = 0.8,				-- Original Damage from bots gets multiplied by this 
+	DamageFactorSniper = 0.8,			-- Original Damage from bots gets multiplied by this 
+	DamageFactorShotgun = 0.8,			-- Original Damage from bots gets multiplied by this 
+	DamageFactorPistol = 0.8,			-- Original Damage from bots gets multiplied by this 
 	DamageFactorKnife = 1.5,			-- Original Damage from bots gets multiplied by this 
-	VehicleAimWorsening = 0.0,			-- Make bots in vehicles aim worse: for difficulty: 0 = no offset (hard), 1 or even greater = more sway (easy) 
-	VehicleAirAimWorsening = 0.0,		-- See VehicleAimWorsening, only for Air-Vehicles 
+	VehicleAimWorsening = 0.05,			-- Make bots in vehicles aim worse: for difficulty: 0 = no offset (hard), 1 or even greater = more sway (easy) 
+	VehicleAirAimWorsening = 0.02,		-- See VehicleAimWorsening, only for Air-Vehicles 
 	DamageFactorVehicles = 1.0,			-- Original Damage from bots in vehicles gets multiplied by this 
 
 	-- SPAWN 
@@ -79,7 +80,7 @@ Config = {
 	BotsReviveBots = true,				-- Bots revive other Bots 
 	BotsThrowGrenades = true,			-- Bots throw grenades at enemies 
 	BotsDeploy = true,					-- Bots deploy ammo and medkits 
-	DeployCycle = 60,					-- Time between deployment of bots in seconds 
+	DeployCycle = 90,					-- Time between deployment of bots in seconds 
 	SnipersAttackChoppers = false,		-- Bots with sniper-rifels attack choppers 
 
 	-- VEHICLE 
@@ -99,6 +100,7 @@ Config = {
 	VehicleMoveWhileShooting = true,	-- Vehicles like tanks do not stop for shooting 
 	AABots = false,						-- Enable Auto-AA by NyScorpy 
 	MaxDistanceAABots = 300,			-- Max Range of Stationary AA 
+	EnableParadrop = false,				-- Bots can spawn on vehicles inside C-130 gunship 
 
 	-- WEAPONS 
 	UseRandomWeapon = true,				-- Use a random weapon out of the Weapon Set 
@@ -126,7 +128,7 @@ Config = {
 	NodesPerCycle = 400,				-- Set how many nodes get drawn per cycle. Affects performance 
 
 	-- ADVANCED 
-	DistanceForDirectAttack = 8,		-- Distance bots can hear you at 
+	DistanceForDirectAttack = 6,		-- Distance bots can hear you at 
 	MeleeAttackCoolDown = 3.5,			-- The time a bot waits before attacking with melee again 
 	AimForHead = false,					-- Bots without sniper aim for the head. A more experimental config 
 	AimForHeadSniper = false,			-- Bots with sniper aim for the head. A more experimental config 
@@ -142,10 +144,11 @@ Config = {
 	MaxStraigtCycle = 10.0,				-- Max time bots move straight, before sidewards-movement (in sec) 
 	MaxSideCycle = 5.0,					-- Max time bots move sidewards, before straight-movement (in sec) 
 	MinMoveCycle = 0.3,					-- Min time bots move sidewards or straight before switching (in sec) 
+	DefendObjectives = true,			-- Bots will stay on captured objectives and defend them 
 
 	-- EXPERT 
 	BotFirstShotDelay = 0.15,			-- Delay for first shot. If too small, there will be great spread in first cycle because it is not compensated yet 
-	BotMinTimeShootAtPlayer = 2.5,		-- The minimum time a bot shoots at one player for - recommended minimum 1.5, below this you will have issues 
+	BotMinTimeShootAtPlayer = 0.7,		-- The minimum time a bot shoots at one player 
 	BotVehicleMinTimeShootAtPlayer = 4.0,	-- The minimum time a bot shoots at one player if in vehicle - recommended minimum 2.5, below this you will have issues 
 	BotFireModeDuration = 4.5,			-- The minimum time a bot tries to shoot a player - recommended minimum 3.0, below this you will have issues 
 	BotVehicleFireModeDuration = 9.0,	-- The minimum time a bot tries to shoot a player or vehicle, when in a vehicle - recommended minimum 7.0 

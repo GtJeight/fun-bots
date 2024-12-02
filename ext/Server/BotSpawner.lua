@@ -28,6 +28,8 @@ function BotSpawner:RegisterVars()
 	self._PlayerUpdateTimer = 0.0
 	self._FirstSpawnInLevel = true
 	self._FirstSpawnDelay = Registry.BOT_SPAWN.FIRST_SPAWN_DELAY
+	self._DelayDirectSpawn = Registry.BOT_SPAWN.DELAY_DIRECT_SPAWN
+	self._NrOfPlayers = 0
 	self._UpdateActive = false
 	---@type SpawnSet[]
 	self._SpawnSets = {}
@@ -54,7 +56,7 @@ function BotSpawner:OnLevelLoaded(p_Round)
 
 	if (Config.TeamSwitchMode == TeamSwitchModes.SwitchForRoundTwo and p_Round ~= self._LastRound) or
 		(Config.TeamSwitchMode == TeamSwitchModes.AlwaysSwitchTeams) or
-		(Config.TeamSwitchMode == TeamSwitchModes.SwitchTeamsRandomly and MathUtils:GetRandom(1, 100) >= 50)
+		(Config.TeamSwitchMode == TeamSwitchModes.SwitchTeamsRandomly and m_Utilities:CheckProbablity(50))
 	then
 		m_Logger:Write("switch teams")
 		self:_SwitchTeams()
@@ -69,7 +71,9 @@ function BotSpawner:OnLevelDestroy()
 	self._UpdateActive = false
 	self._FirstSpawnInLevel = true
 	self._FirstSpawnDelay = Registry.BOT_SPAWN.FIRST_SPAWN_DELAY
+	self._DelayDirectSpawn = Registry.BOT_SPAWN.DELAY_DIRECT_SPAWN
 	self._PlayerUpdateTimer = 0.0
+	self._NrOfPlayers = 0
 end
 
 -- =============================================
@@ -94,6 +98,10 @@ function BotSpawner:OnUpdateManagerUpdate(p_DeltaTime, p_UpdatePass)
 			self._FirstSpawnDelay = self._FirstSpawnDelay - p_DeltaTime
 		end
 	else
+		-- count below 0 for post-delay-reactions
+		if self._DelayDirectSpawn > -10 and Globals.IsInputAllowed and self._NrOfPlayers > 0 then
+			self._DelayDirectSpawn = self._DelayDirectSpawn - p_DeltaTime
+		end
 		self._PlayerUpdateTimer = self._PlayerUpdateTimer + p_DeltaTime
 
 		if self._PlayerUpdateTimer > 2.0 then
@@ -117,7 +125,7 @@ function BotSpawner:OnUpdateManagerUpdate(p_DeltaTime, p_UpdatePass)
 
 			if Globals.SpawnMode ~= SpawnModes.manual then
 				-- Garbage-collection of unwanted bots
-				m_BotManager:DestroyDisabledBots()
+				m_BotManager:DestroyDisabledBots(self._DelayDirectSpawn > -5.0)
 				m_BotManager:RefreshTables()
 			end
 		end
@@ -134,6 +142,7 @@ function BotSpawner:OnUpdateManagerUpdate(p_DeltaTime, p_UpdatePass)
 				for j, l_BotNameToIgnore in pairs(Globals.IgnoreBotNames) do
 					if l_BotNameToIgnore == l_PlayerNameToKick then
 						table.remove(Globals.IgnoreBotNames, j)
+						break
 					end
 				end
 
@@ -250,7 +259,7 @@ end
 ---@param p_SquadId SquadId|integer
 function BotSpawner:OnTeamChange(p_Player, p_TeamId, p_SquadId)
 	-- kill bot, if still alive
-	local s_Bot = m_BotManager:GetBotByName(p_Player.name)
+	local s_Bot = m_BotManager:GetBotById(p_Player.id)
 	if s_Bot ~= nil then
 		if s_Bot.m_Player.soldier ~= nil then
 			s_Bot.m_Player.soldier:Kill()
@@ -284,9 +293,9 @@ end
 -- Custom Bot Respawn Event
 -- =============================================
 
----@param p_BotName string
-function BotSpawner:OnRespawnBot(p_BotName)
-	local s_Bot = m_BotManager:GetBotByName(p_BotName)
+---@param p_BotId integer
+function BotSpawner:OnRespawnBot(p_BotId)
+	local s_Bot = m_BotManager:GetBotById(p_BotId)
 	if s_Bot == nil then
 		return
 	end
@@ -320,6 +329,14 @@ end
 -- =============================================
 -- Public Functions
 -- =============================================
+function BotSpawner:UpdateBotNames()
+	self._SpawnSets = {}
+	local s_TimeToWait = (#m_BotManager:GetBots() * Registry.BOT.BOT_DESTORY_DELAY) + 1.0
+	m_BotManager:DestroyAll()
+	m_BotManager:RefreshTables()
+	self._FirstSpawnInLevel = true
+	self._FirstSpawnDelay = s_TimeToWait
+end
 
 function BotSpawner:UpdateBotAmountAndTeam()
 	-- Keep Slot for next player.
@@ -349,11 +366,18 @@ function BotSpawner:UpdateBotAmountAndTeam()
 	local s_CountBots = {}
 	local s_TargetTeamCount = {}
 
+	local s_BotsToDelay = {}
+
 	for i = 1, Globals.NrOfTeams do
 		s_CountPlayers[i] = 0
-		s_CountBots[i] = m_BotManager:GetActiveBotCount(i)
+		s_BotsToDelay[i] = 0
+		s_CountBots[i] = m_BotManager:GetActiveBotCount(i) -- + m_BotManager:GetInactiveBotCount()
 		s_TargetTeamCount[i] = 0
 		local s_TempPlayers = PlayerManager:GetPlayersByTeam(i)
+
+		if self._DelayDirectSpawn > -5.0 then
+			s_BotsToDelay[i] = #g_GameDirector:GetSpawnableVehicle(i)
+		end
 
 		for _, l_Player in pairs(s_TempPlayers) do
 			if not m_Utilities:isBot(l_Player) then
@@ -361,9 +385,11 @@ function BotSpawner:UpdateBotAmountAndTeam()
 			end
 		end
 
-		s_TeamCount[i] = s_CountBots[i] + s_CountPlayers[i]
+		s_TeamCount[i] = s_CountBots[i] + s_CountPlayers[i] + s_BotsToDelay[i]
 		s_PlayerCount = s_PlayerCount + s_CountPlayers[i]
 	end
+
+	self._NrOfPlayers = s_PlayerCount
 
 	-- Kill and destroy bots, if no player left.
 	if s_PlayerCount == 0 then
@@ -410,7 +436,7 @@ function BotSpawner:UpdateBotAmountAndTeam()
 
 		for i = 1, Globals.NrOfTeams do
 			if s_TeamCount[i] < s_TargetTeamCount[i] then
-				self:SpawnWayBots(nil, s_TargetTeamCount[i] - s_TeamCount[i], true, 0, 0, i)
+				self:SpawnWayBots(s_TargetTeamCount[i] - s_TeamCount[i], true, 0, 0, i)
 			elseif s_TeamCount[i] > s_TargetTeamCount[i] and s_CountBots[i] > 0 then
 				m_BotManager:KillAll(s_TeamCount[i] - s_TargetTeamCount[i], i)
 			end
@@ -468,7 +494,7 @@ function BotSpawner:UpdateBotAmountAndTeam()
 
 		for i = 1, Globals.NrOfTeams do
 			if s_TeamCount[i] < s_TargetTeamCount[i] then
-				self:SpawnWayBots(nil, s_TargetTeamCount[i] - s_TeamCount[i], true, 0, 0, i)
+				self:SpawnWayBots(s_TargetTeamCount[i] - s_TeamCount[i], true, 0, 0, i)
 			elseif s_TeamCount[i] > s_TargetTeamCount[i] then
 				m_BotManager:KillAll(s_TeamCount[i] - s_TargetTeamCount[i], i)
 			end
@@ -503,7 +529,7 @@ function BotSpawner:UpdateBotAmountAndTeam()
 
 			for i = 1, Globals.NrOfTeams do
 				if s_TeamCount[i] < s_TargetTeamCount[i] then
-					self:SpawnWayBots(nil, s_TargetTeamCount[i] - s_TeamCount[i], true, 0, 0, i)
+					self:SpawnWayBots(s_TargetTeamCount[i] - s_TeamCount[i], true, 0, 0, i)
 				elseif s_TeamCount[i] > s_TargetTeamCount[i] and s_CountBots[i] > 0 then
 					m_BotManager:KillAll(s_TeamCount[i] - s_TargetTeamCount[i], i)
 				end
@@ -527,7 +553,7 @@ function BotSpawner:UpdateBotAmountAndTeam()
 			for i = 1, Globals.NrOfTeams do
 				if i ~= s_PlayerTeam then
 					if s_TeamCount[i] < s_TargetBotCountPerEnemyTeam then
-						self:SpawnWayBots(nil, s_TargetBotCountPerEnemyTeam - s_TeamCount[i], true, 0, 0, i)
+						self:SpawnWayBots(s_TargetBotCountPerEnemyTeam - s_TeamCount[i], true, 0, 0, i)
 					elseif s_TeamCount[i] > s_TargetBotCountPerEnemyTeam then
 						m_BotManager:KillAll(s_TeamCount[i] - s_TargetBotCountPerEnemyTeam, i)
 					end
@@ -555,7 +581,7 @@ function BotSpawner:UpdateBotAmountAndTeam()
 
 			for i = 1, Globals.NrOfTeams do
 				if s_TeamCount[i] < s_TargetTeamCount[i] then
-					self:SpawnWayBots(nil, s_TargetTeamCount[i] - s_TeamCount[i], true, 0, 0, i)
+					self:SpawnWayBots(s_TargetTeamCount[i] - s_TeamCount[i], true, 0, 0, i)
 				elseif s_TeamCount[i] > s_TargetTeamCount[i] and s_CountBots[i] > 0 then
 					m_BotManager:KillAll(s_TeamCount[i] - s_TargetTeamCount[i], i)
 				end
@@ -578,7 +604,7 @@ function BotSpawner:UpdateBotAmountAndTeam()
 			for i = 1, Globals.NrOfTeams do
 				if i ~= s_PlayerTeam then
 					if s_TeamCount[i] < s_TargetBotCountPerEnemyTeam then
-						self:SpawnWayBots(nil, s_TargetBotCountPerEnemyTeam - s_TeamCount[i], true, 0, 0, i)
+						self:SpawnWayBots(s_TargetBotCountPerEnemyTeam - s_TeamCount[i], true, 0, 0, i)
 					elseif s_TeamCount[i] > s_TargetBotCountPerEnemyTeam then
 						m_BotManager:KillAll(s_TeamCount[i] - s_TargetBotCountPerEnemyTeam, i)
 					end
@@ -588,13 +614,13 @@ function BotSpawner:UpdateBotAmountAndTeam()
 	elseif Globals.SpawnMode == SpawnModes.manual then
 		if self._FirstSpawnInLevel then
 			for i = 1, Globals.NrOfTeams do
-				self:SpawnWayBots(nil, s_TeamCount[i] - s_CountPlayers[i], true, 0, 0, i)
+				self:SpawnWayBots(s_TeamCount[i] - s_CountPlayers[i], true, 0, 0, i)
 			end
 		end
 	end
 end
 
----@param p_ExistingBot Bot
+---@param p_ExistingBot Bot|nil
 ---@param p_Name string
 ---@param p_TeamId TeamId|integer
 ---@param p_SquadId SquadId|integer
@@ -627,7 +653,7 @@ end
 ---@param p_Spacing number
 function BotSpawner:SpawnBotRow(p_Player, p_Length, p_Spacing)
 	for i = 1, p_Length do
-		local s_Name = m_BotCreator:GetNextBotName(self:_GetSpawnBotKit())
+		local s_Name = m_BotCreator:GetNextBotName(self:_GetSpawnBotKit(), m_BotManager:GetBotTeam())
 
 		if s_Name ~= nil then
 			local s_Transform = LinearTransform()
@@ -648,7 +674,7 @@ end
 ---@param p_Height integer
 function BotSpawner:SpawnBotTower(p_Player, p_Height)
 	for i = 1, p_Height do
-		local s_Name = m_BotCreator:GetNextBotName(self:_GetSpawnBotKit())
+		local s_Name = m_BotCreator:GetNextBotName(self:_GetSpawnBotKit(), m_BotManager:GetBotTeam())
 
 		if s_Name ~= nil then
 			local s_Yaw = p_Player.input.authoritativeAimingYaw
@@ -675,7 +701,7 @@ end
 function BotSpawner:SpawnBotGrid(p_Player, p_Rows, p_Columns, p_Spacing)
 	for i = 1, p_Rows do
 		for j = 1, p_Columns do
-			local s_Name = m_BotCreator:GetNextBotName(self:_GetSpawnBotKit())
+			local s_Name = m_BotCreator:GetNextBotName(self:_GetSpawnBotKit(), m_BotManager:GetBotTeam())
 
 			if s_Name ~= nil then
 				local s_Yaw = p_Player.input.authoritativeAimingYaw
@@ -699,13 +725,12 @@ function BotSpawner:SpawnBotGrid(p_Player, p_Rows, p_Columns, p_Spacing)
 	end
 end
 
----@param p_Player Player
----@param p_Amount integer
+---@param p_Amount integer|number
 ---@param p_UseRandomWay boolean
 ---@param p_ActiveWayIndex? integer
 ---@param p_IndexOnPath? integer
 ---@param p_TeamId? TeamId|integer
-function BotSpawner:SpawnWayBots(p_Player, p_Amount, p_UseRandomWay, p_ActiveWayIndex, p_IndexOnPath, p_TeamId)
+function BotSpawner:SpawnWayBots(p_Amount, p_UseRandomWay, p_ActiveWayIndex, p_IndexOnPath, p_TeamId)
 	if #m_NodeCollection:GetPaths() <= 0 then
 		return
 	end
@@ -977,7 +1002,7 @@ function BotSpawner:_FindClosestSpawnPoint(p_TeamId)
 							end
 
 							s_ClosestDistance = s_TargetLocation:Distance(s_Entity.transform.trans)
-						elseif s_ClosestDistance > s_TargetLocation:Distance(s_Entity.transform.trans) then
+						elseif s_TargetLocation and s_ClosestDistance > s_TargetLocation:Distance(s_Entity.transform.trans) then
 							s_BestSpawnPoint = l_Entity
 							s_ClosestDistance = s_TargetLocation:Distance(s_Entity.transform.trans)
 						end
@@ -1035,7 +1060,7 @@ end
 -- Some more Functions
 -- =============================================
 
----@param p_Player Player
+---@param p_Player Player|nil
 ---@param p_UseRandomWay boolean
 ---@param p_ActiveWayIndex integer|nil
 ---@param p_IndexOnPath integer
@@ -1056,13 +1081,24 @@ function BotSpawner:_SpawnSingleWayBot(p_Player, p_UseRandomWay, p_ActiveWayInde
 		s_IsRespawn = true
 		s_Name = p_ExistingBot.m_Name
 		s_TeamId = p_ExistingBot.m_Player.teamId
-	else
-		s_Name = m_BotCreator:GetNextBotName(self:_GetSpawnBotKit())
+	elseif Registry.BOT_SPAWN.KEEP_BOTS_ON_NEW_ROUND and m_BotManager:GetInactiveBotCount(s_TeamId) > 0 then
+		local s_Bot = m_BotManager:GetInactiveBot(s_TeamId)
+		if s_Bot then
+			p_ExistingBot = s_Bot
+			s_IsRespawn = true
+			s_Name = p_ExistingBot.m_Name
+			s_TeamId = p_ExistingBot.m_Player.teamId
+		end
+	end
+
+	-- only new bot, if no respawn
+	if not s_IsRespawn or not p_ExistingBot then
+		s_Name = m_BotCreator:GetNextBotName(self:_GetSpawnBotKit(), s_TeamId)
 	end
 
 	local s_SquadId = self:_GetSquadToJoin(s_TeamId)
 
-	if s_IsRespawn then
+	if s_IsRespawn and p_ExistingBot then
 		if p_ExistingBot.m_Player.squadId == SquadId.SquadNone or p_ExistingBot.m_Player.squadId > s_SquadId then -- place free in other squad
 			p_ExistingBot.m_Player.squadId = s_SquadId
 		else
@@ -1120,15 +1156,18 @@ function BotSpawner:_SpawnSingleWayBot(p_Player, p_UseRandomWay, p_ActiveWayInde
 							break
 						end
 					end
+				elseif s_SpawnPoint == "SpawnInGunship" then
+					s_SpawnEntity = g_GameDirector:GetGunship(s_TeamId)
 				end
 
-				if s_IsRespawn then
+
+				if s_IsRespawn and p_ExistingBot then
 					p_ExistingBot:SetVarsWay(nil, true, 0, 0, false)
 					self:_SpawnBot(p_ExistingBot, s_Transform, false)
 
 					if p_ExistingBot:_EnterVehicleEntity(s_SpawnEntity, false) ~= 0 then
 						p_ExistingBot:Kill()
-					else
+					elseif s_SpawnEntity ~= nil then
 						p_ExistingBot:FindVehiclePath(s_SpawnEntity.transform.trans)
 					end
 				else
@@ -1145,7 +1184,7 @@ function BotSpawner:_SpawnSingleWayBot(p_Player, p_UseRandomWay, p_ActiveWayInde
 
 						if s_Bot:_EnterVehicleEntity(s_SpawnEntity, false) ~= 0 then
 							s_Bot:Kill()
-						else
+						elseif s_SpawnEntity then
 							s_Bot:FindVehiclePath(s_SpawnEntity.transform.trans)
 						end
 					end
@@ -1189,20 +1228,22 @@ function BotSpawner:_SpawnSingleWayBot(p_Player, p_UseRandomWay, p_ActiveWayInde
 
 		s_Transform.trans = s_SpawnPoint.Position
 
-		if s_IsRespawn then
-			p_ExistingBot:SetVarsWay(p_Player, p_UseRandomWay, p_ActiveWayIndex, p_IndexOnPath, s_InverseDirection)
-			self:_SpawnInEntity(p_ExistingBot, s_SquadSpawnVehicle, s_Transform, false)
-		else
-			local s_Bot = m_BotManager:CreateBot(s_Name, s_TeamId, s_SquadId)
+		if p_ActiveWayIndex then
+			if s_IsRespawn and p_ExistingBot then
+				p_ExistingBot:SetVarsWay(p_Player, p_UseRandomWay, p_ActiveWayIndex, p_IndexOnPath, s_InverseDirection)
+				self:_SpawnInEntity(p_ExistingBot, s_SquadSpawnVehicle, s_Transform, false)
+			else
+				local s_Bot = m_BotManager:CreateBot(s_Name, s_TeamId, s_SquadId)
 
-			if s_Bot ~= nil then
-				-- Check for first one in squad.
-				if (TeamSquadManager:GetSquadPlayerCount(s_TeamId, s_SquadId) == 1) then
-					s_Bot.m_Player:SetSquadLeader(true, false) -- Not private.
+				if s_Bot ~= nil then
+					-- Check for first one in squad.
+					if (TeamSquadManager:GetSquadPlayerCount(s_TeamId, s_SquadId) == 1) then
+						s_Bot.m_Player:SetSquadLeader(true, false) -- Not private.
+					end
+					m_BotCreator:SetAttributesToBot(s_Bot)
+					s_Bot:SetVarsWay(p_Player, p_UseRandomWay, p_ActiveWayIndex, p_IndexOnPath, s_InverseDirection)
+					self:_SpawnInEntity(s_Bot, s_SquadSpawnVehicle, s_Transform, true)
 				end
-				m_BotCreator:SetAttributesToBot(s_Bot)
-				s_Bot:SetVarsWay(p_Player, p_UseRandomWay, p_ActiveWayIndex, p_IndexOnPath, s_InverseDirection)
-				self:_SpawnInEntity(s_Bot, s_SquadSpawnVehicle, s_Transform, true)
 			end
 		end
 	end
@@ -1288,12 +1329,27 @@ function BotSpawner:_GetSpawnPoint(p_TeamId, p_SquadId)
 	local s_MaximumTrys = 100
 	local s_TrysDone = 0
 
-	if Config.UseVehicles and #g_GameDirector:GetSpawnableVehicle(p_TeamId) > 0 then
+	if Config.UseVehicles and self._DelayDirectSpawn <= 0.0 and #g_GameDirector:GetSpawnableVehicle(p_TeamId) > 0 then
 		return "SpawnAtVehicle"
 	end
 
 	if Config.AABots and #g_GameDirector:GetStationaryAas(p_TeamId) > 0 then
 		return "SpawnInAa"
+	end
+
+	-- Gunships disabled for now! TODO: enable gunship again, once server-cameras are supported for aiming
+	local s_Gunship = g_GameDirector:GetGunship(p_TeamId)
+	if false and s_Gunship then -- TODO: Remove "false", once the aiming works
+		local s_SeatsLeft = false
+		for i = 1, s_Gunship.entryCount - 1 do
+			if s_Gunship:GetPlayerInEntry(i) == nil then
+				s_SeatsLeft = true
+				break
+			end
+		end
+		if s_SeatsLeft then
+			return "SpawnInGunship"
+		end
 	end
 
 	-- CONQUEST
@@ -1400,6 +1456,11 @@ function BotSpawner:_GetSquadToJoin(p_TeamId)
 	return SquadId.SquadNone
 end
 
+---comment
+---@param p_Bot Bot
+---@param p_TeamId TeamId
+---@param p_SquadId SquadId
+---@return table<integer, DataContainer>|nil
 function BotSpawner:_GetUnlocks(p_Bot, p_TeamId, p_SquadId)
 	if Globals.IsGm then
 		-- No Perks in Gunmaster.
@@ -1452,7 +1513,7 @@ function BotSpawner:_GetUnlocks(p_Bot, p_TeamId, p_SquadId)
 			"persistence/unlocks/vehicles/artilleryairburst",
 		}
 		-- some variation in appearance
-		if MathUtils:GetRandomInt(1, 100) <= 50 then
+		if m_Utilities:CheckProbablity(50) then
 			table.insert(s_VehiclePerksToAdd, "persistence/unlocks/vehicles/mbtreactivearmor")
 			table.insert(s_VehiclePerksToAdd, "persistence/unlocks/vehicles/lbtreactivearmor")
 			table.insert(s_VehiclePerksToAdd, "persistence/unlocks/vehicles/ifvreloadupgrade")
@@ -1485,7 +1546,7 @@ function BotSpawner:_GetUnlocks(p_Bot, p_TeamId, p_SquadId)
 	-- Choose good available perk.
 	for _, l_PerkName in pairs(s_PossiblePerks) do
 		s_SelectedPerk = l_PerkName
-		if MathUtils:GetRandomInt(1, 100) <= 80 then -- Use the best available perk with this percentage.
+		if m_Utilities:CheckProbablity(80) then -- Use the best available perk with this percentage.
 			break
 		end
 	end
@@ -1500,7 +1561,8 @@ function BotSpawner:_GetUnlocks(p_Bot, p_TeamId, p_SquadId)
 			end
 		else
 			-- Vehicle perk.
-			for l_IndexVehiclePerk, l_VehiclePerkName in pairs(s_VehiclePerksToAdd) do
+			for l_IndexVehiclePerk = #s_VehiclePerksToAdd, 1, -1 do
+				local l_VehiclePerkName = s_VehiclePerksToAdd[l_IndexVehiclePerk]
 				if l_PerkName == l_VehiclePerkName then
 					table.remove(s_VehiclePerksToAdd, l_IndexVehiclePerk)
 					table.insert(s_Unlocks, s_CurrentUnlocks[l_Index])
@@ -1520,7 +1582,7 @@ function BotSpawner:_GetUnlocks(p_Bot, p_TeamId, p_SquadId)
 	return s_Unlocks
 end
 
----@param p_Bot Bot|integer
+---@param p_Bot Bot
 ---@param p_Kit BotKits|integer
 ---@param p_Color BotColors|integer
 function BotSpawner:_SetKitAndAppearance(p_Bot, p_Kit, p_Color)
@@ -1575,16 +1637,19 @@ function BotSpawner:_SetKitAndAppearance(p_Bot, p_Kit, p_Color)
 	if not Globals.IsGm then
 		s_Unlocks = self:_GetUnlocks(p_Bot, s_TeamId, s_SquadId)
 	end
+	if not s_SoldierKit then
+		return
+	end
 
 	if Globals.RemoveKitVisuals then
 		-- for Civilianizer-mod:
-		if not Globals.IsGm then
+		if not Globals.IsGm and s_Unlocks then
 			p_Bot.m_Player:SelectUnlockAssets(s_SoldierKit, { s_Appearance }, s_Unlocks)
 		else
 			p_Bot.m_Player:SelectUnlockAssets(s_SoldierKit, {})
 		end
 	else
-		if not Globals.IsGm then
+		if not Globals.IsGm and s_Unlocks then
 			p_Bot.m_Player:SelectUnlockAssets(s_SoldierKit, { s_Appearance }, s_Unlocks)
 		else
 			p_Bot.m_Player:SelectUnlockAssets(s_SoldierKit, { s_Appearance })
@@ -1841,7 +1906,7 @@ end
 
 ---@param p_Bot Bot
 ---@param p_BotKit BotKits|integer
----@param p_Team TeamId|integer
+---@param p_Team string
 ---@param p_NewWeapons boolean
 function BotSpawner:_SetBotWeapons(p_Bot, p_BotKit, p_Team, p_NewWeapons)
 	if Globals.IsScavenger then
@@ -1926,7 +1991,9 @@ function BotSpawner:_SwitchTeams()
 				s_NewTeam = Globals.NrOfTeams
 			end
 
-			l_Player.teamId = s_NewTeam
+			if not Config.BotTeamNames or not m_Utilities:isBot(l_Player) then
+				l_Player.teamId = s_NewTeam
+			end
 		end
 	end
 end

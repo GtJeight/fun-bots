@@ -11,6 +11,7 @@ XP1_001 ConquestAssaultSmall1 1
 XP1_003 ConquestAssaultSmall1 1
 XP1_004 ConquestAssaultSmall1 1
 MP_001 ConquestLarge0 1
+MP_003 ConquestLarge0 1
 MP_007 ConquestLarge0 1
 MP_011 ConquestLarge0 1
 MP_012 ConquestLarge0 1
@@ -20,6 +21,7 @@ MP_018 ConquestLarge0 1
 MP_Subway ConquestLarge0 1
 XP1_002 ConquestLarge0 1
 XP3_Alborz ConquestLarge0 1
+XP3_Desert ConquestLarge0 1
 XP3_Shield ConquestLarge0 1
 XP3_Valley ConquestLarge0 1
 XP4_FD ConquestLarge0 1
@@ -27,6 +29,7 @@ XP4_Parl ConquestLarge0 1
 XP4_Quake ConquestLarge0 1
 XP5_001 ConquestLarge0 1
 XP5_002 ConquestLarge0 1
+XP5_003 ConquestLarge0 1
 XP5_004 ConquestLarge0 1
 COOP_006 ConquestSmall0 1
 MP_001 ConquestSmall0 1
@@ -53,6 +56,8 @@ XP2_Factory Domination0 1
 XP2_Office Domination0 1
 XP2_Palace Domination0 1
 XP2_Skybar Domination0 1
+COOP_002 GunMaster0 1
+COOP_006 GunMaster0 1
 MP_001 GunMaster0 1
 MP_003 GunMaster0 1
 MP_007 GunMaster0 1
@@ -62,6 +67,9 @@ MP_013 GunMaster0 1
 MP_017 GunMaster0 1
 MP_018 GunMaster0 1
 MP_Subway GunMaster0 1
+SP_Jet GunMaster0 1
+SP_Valley GunMaster0 1
+SP_Villa GunMaster0 1
 XP1_003 GunMaster0 1
 XP2_Factory GunMaster0 1
 XP2_Office GunMaster0 1
@@ -149,7 +157,6 @@ XP5_004 SquadRush0 1
 XP3_Desert TankSuperiority0 1
 XP3_Shield TankSuperiority0 1
 XP3_Valley TankSuperiority0 1
-COOP_002 TeamDeathMatch0 1
 COOP_006 TeamDeathMatch0 1
 MP_001 TeamDeathMatch0 1
 MP_003 TeamDeathMatch0 1
@@ -162,7 +169,6 @@ MP_018 TeamDeathMatch0 1
 MP_Subway TeamDeathMatch0 1
 SP_Jet TeamDeathMatch0 1
 SP_Valley TeamDeathMatch0 1
-SP_Villa TeamDeathMatch0 1
 XP1_001 TeamDeathMatch0 1
 XP1_002 TeamDeathMatch0 1
 XP1_003 TeamDeathMatch0 1

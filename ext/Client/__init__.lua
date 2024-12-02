@@ -2,6 +2,8 @@
 ---@overload fun():FunBotClient
 FunBotClient = class('FunBotClient')
 
+require('__shared/Registry/Registry')
+
 require('__shared/Config')
 require('__shared/Debug')
 require('__shared/Constants/BotColors')
@@ -53,7 +55,7 @@ function FunBotClient:OnExtensionLoaded()
 
 	-- Announce the version in the client's console if enabled in the registry.
 	if Registry.VERSION.CLIENT_SHOW_VERSION_ON_JOIN then
-		print("Server is running fun-bots version " .. RegistryManager:GetUtil():GetVersion())
+		print("Server is running fun-bots version " .. Registry.GetVersion())
 	end
 end
 
@@ -164,7 +166,8 @@ end
 -- =============================================
 -- NetEvents
 -- =============================================
-
+---@param p_NewConfig table
+---@param p_UpdateWeaponSets boolean
 function FunBotClient:OnWriteClientSettings(p_NewConfig, p_UpdateWeaponSets)
 	m_ClientBotManager:OnWriteClientSettings(p_NewConfig, p_UpdateWeaponSets)
 
@@ -175,14 +178,17 @@ function FunBotClient:OnWriteClientSettings(p_NewConfig, p_UpdateWeaponSets)
 	end
 end
 
+---@param p_RaycastData RaycastRequests
 function FunBotClient:CheckForBotBotAttack(p_RaycastData)
 	m_ClientBotManager:CheckForBotBotAttack(p_RaycastData)
 end
 
+---@param p_Data any
 function FunBotClient:OnUISettings(p_Data)
 	m_ClientNodeEditor:OnUISettings(p_Data)
 end
 
+---@param p_ConfigList table
 function FunBotClient:OnRegisterConsoleCommands(p_ConfigList)
 	m_ConsoleCommands:OnRegisterConsoleCommands(p_ConfigList)
 end

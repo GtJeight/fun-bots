@@ -4,7 +4,6 @@ FunBotServer = class('FunBotServer')
 
 -- The registry should be loaded first before loading anything else.
 require('__shared/Registry/Registry')
-require('__shared/Registry/RegistryManager')
 
 require('__shared/Debug')
 require('__shared/Config')
@@ -56,8 +55,6 @@ local m_BotCreator = require('BotCreator')
 local m_BotSpawner = require('BotSpawner')
 ---@type WeaponList
 local m_WeaponList = require('__shared/WeaponList')
----@type BugReport
-local m_bugReport = require('Debug/BugReport')
 ---@type ChatCommands
 local m_ChatCommands = require('Commands/Chat')
 ---@type Console
@@ -85,6 +82,8 @@ end
 
 ---VEXT Shared Extension:Loaded Event
 function FunBotServer:OnExtensionLoaded()
+	-- destroy all still existing bot-players first
+	m_BotManager:DestroyAllOldBotPlayers()
 	m_SettingsManager:OnExtensionLoaded()
 	m_Language:loadLanguage(Config.Language)
 	m_WeaponList:UpdateWeaponList()
@@ -122,7 +121,6 @@ function FunBotServer:RegisterEvents()
 	Events:Subscribe('Player:EnteredCapturePoint', self, self.OnPlayerEnteredCapturePoint)
 	Events:Subscribe('Player:ExitedCapturePoint', self, self.OnPlayerExitedCapturePoint)
 	Events:Subscribe('Vehicle:SpawnDone', self, self.OnVehicleSpawnDone)
-	Events:Subscribe('Vehicle:Destroyed', self, self.OnVehicleDestroyed)
 	Events:Subscribe('Vehicle:Unspawn', self, self.OnVehicleUnspawn)
 	Events:Subscribe('Vehicle:Damage', self, self.OnVehicleDamage)
 	Events:Subscribe('Vehicle:Enter', self, self.OnVehicleEnter)
@@ -132,6 +130,8 @@ function FunBotServer:RegisterEvents()
 	Events:Subscribe('CombatArea:PlayerDeserting', self, self.OnCombatAreaDeserting)
 	Events:Subscribe('CombatArea:PlayerReturning', self, self.OnCombatAreaReturning)
 	Events:Subscribe('LifeCounter:BaseDestroyed', self, self.OnLifeCounterBaseDestoyed)
+
+	Events:Subscribe('NodeCollection:FinishedLoading', self, self.OnFinishedLoading)
 end
 
 function FunBotServer:RegisterHooks()
@@ -302,6 +302,8 @@ function FunBotServer:OnLevelLoaded(p_LevelName, p_GameMode, p_Round, p_RoundsPe
 
 	-- Only use name of Level.
 	p_LevelName = p_LevelName:gsub(".+/.+/", "")
+	Globals.LevelName = p_LevelName
+	Globals.Round = p_Round
 	m_Logger:Write('OnLevelLoaded: ' .. p_LevelName .. ' ' .. p_GameMode)
 
 	self:SetRespawnDelay()
@@ -319,10 +321,15 @@ function FunBotServer:OnLevelLoaded(p_LevelName, p_GameMode, p_Round, p_RoundsPe
 		self:DestroyObstacles(p_LevelName, p_GameMode)
 	end
 
-	m_NodeEditor:OnLevelLoaded(p_LevelName, p_GameMode, s_CustomGameMode)
 	m_GameDirector:OnLevelLoaded()
 	m_AirTargets:OnLevelLoaded()
-	m_BotSpawner:OnLevelLoaded(p_Round)
+	m_BotSpawner:OnLevelLoaded(Globals.Round)
+	m_NodeEditor:OnLevelLoaded(p_LevelName, p_GameMode, s_CustomGameMode)
+end
+
+function FunBotServer:OnFinishedLoading()
+	m_NodeEditor:EndOfLoad()
+	m_GameDirector:OnLoadFinished()
 end
 
 function FunBotServer:DestroyObstacles(p_LevelName, p_GameMode)
@@ -334,6 +341,9 @@ function FunBotServer:DestroyObstacles(p_LevelName, p_GameMode)
 		s_Positions[#s_Positions + 1] = Vec3(-74.64, 178.01, 42.61)
 		s_Positions[#s_Positions + 1] = Vec3(-85.23, 178.01, 44.08)
 		s_Positions[#s_Positions + 1] = Vec3(-89.42, 178.40, 50.82)
+		s_Positions[#s_Positions + 1] = Vec3(-64.84, 179.04, -36.78)
+		s_Positions[#s_Positions + 1] = Vec3(-77.92, 174.98, 4.35)
+		s_Positions[#s_Positions + 1] = Vec3(-93.82, 174.97, -11.36)
 	end
 
 	for _, l_Position in ipairs(s_Positions) do
@@ -347,6 +357,7 @@ function FunBotServer:OnLevelDestroy()
 	m_BotSpawner:OnLevelDestroy()
 	m_NodeEditor:OnLevelDestroy()
 	m_AirTargets:OnLevelDestroy()
+	m_GameDirector:OnLevelDestroy()
 	local s_OldMemory = math.floor(collectgarbage("count") / 1024)
 	collectgarbage('collect')
 	m_Logger:Write("*Collecting Garbage on Level Destroy: " ..
@@ -483,10 +494,6 @@ function FunBotServer:OnVehicleSpawnDone(p_VehicleEntity)
 	m_GameDirector:OnVehicleSpawnDone(p_VehicleEntity)
 end
 
-function FunBotServer:OnVehicleDestroyed(p_VehicleEntity, p_VehiclePoints, p_HotTeam)
-	m_GameDirector:OnVehicleDestroyed(p_VehicleEntity, p_VehiclePoints, p_HotTeam)
-end
-
 function FunBotServer:OnVehicleUnspawn(p_VehicleEntity, p_VehiclePoints, p_HotTeam)
 	m_GameDirector:OnVehicleUnspawn(p_VehicleEntity, p_VehiclePoints, p_HotTeam)
 end
@@ -511,6 +518,7 @@ end
 ---@param p_VehicleEntity Entity @`ControllableEntity`
 ---@param p_Player Player
 function FunBotServer:OnVehicleExit(p_VehicleEntity, p_Player)
+	m_GameDirector:OnVehicleExit(p_VehicleEntity, p_Player)
 	m_AirTargets:OnVehicleExit(p_VehicleEntity, p_Player)
 end
 
@@ -535,8 +543,10 @@ function FunBotServer:OnEntityFactoryCreate(p_HookCtx, p_EntityData, p_Transform
 			if not s_CreatedEntity then
 				return
 			end
+			local s_TimeDelay = s_MissileEntityData.engineTimeToIgnition + s_MissileEntityData.timeToActivateGuidingSystem
+			local s_MaxSpeed = s_MissileEntityData.maxSpeed
 
-			m_BotManager:CheckForFlareOrSmoke(s_CreatedEntity)
+			m_BotManager:CheckForFlareOrSmoke(s_CreatedEntity, s_MaxSpeed, s_TimeDelay)
 		end
 	end
 	if Registry.DEBUG.VEHICLE_PROJECTILE_TRACE then
@@ -544,7 +554,7 @@ function FunBotServer:OnEntityFactoryCreate(p_HookCtx, p_EntityData, p_Transform
 			local s_CreatedEntity = p_HookCtx:Call()
 			if s_CreatedEntity then
 				local s_SpartialEntity = SpatialEntity(s_CreatedEntity)
-				Globals.LastPorjectile = s_SpartialEntity.transform
+				-- Globals.LastPorjectile = s_SpartialEntity.transform
 			end
 		end
 	end
@@ -558,6 +568,11 @@ function FunBotServer:OnBulletEntityCollision(p_HookCtx, p_Entity, p_Hit, p_Give
 	if Registry.COMMON.USE_BUGGED_HITBOXES then
 		return
 	end
+
+	if Registry.DEBUG.VEHICLE_PROJECTILE_TRACE then
+		Globals.LastPorjectile = SpatialEntity(p_Entity).transform
+	end
+
 	if p_GiverInfo.giver and p_GiverInfo.giver.onlineId == 0 then
 		local s_SyncedGameSettings = ResourceManager:GetSettings("SyncedGameSettings")
 
@@ -575,32 +590,20 @@ end
 -- Custom Events.
 -- =============================================
 
-function FunBotServer:OnShootAt(p_Player, p_BotName, p_IgnoreYaw)
-	m_BotManager:OnShootAt(p_Player, p_BotName, p_IgnoreYaw)
-end
-
-function FunBotServer:OnRevivePlayer(p_Player, p_BotName)
-	m_BotManager:OnRevivePlayer(p_Player, p_BotName)
-end
-
-function FunBotServer:OnBotShootAtBot(p_Player, p_BotName1, p_BotName2)
-	m_BotManager:OnBotShootAtBot(p_Player, p_BotName1, p_BotName2)
-end
-
 function FunBotServer:OnClientRaycastResults(p_Player, p_RaycastResults)
 	m_BotManager:OnClientRaycastResults(p_Player, p_RaycastResults)
 end
 
-function FunBotServer:OnBotAbortWait(p_BotName)
-	m_BotManager:OnBotAbortWait(p_BotName)
+function FunBotServer:OnBotAbortWait(p_BotId)
+	m_BotManager:OnBotAbortWait(p_BotId)
 end
 
-function FunBotServer:OnBotExitVehicle(p_BotName)
-	m_BotManager:OnBotExitVehicle(p_BotName)
+function FunBotServer:OnBotExitVehicle(p_BotId)
+	m_BotManager:OnBotExitVehicle(p_BotId)
 end
 
-function FunBotServer:OnRespawnBot(p_BotName)
-	m_BotSpawner:OnRespawnBot(p_BotName)
+function FunBotServer:OnRespawnBot(p_BotId)
+	m_BotSpawner:OnRespawnBot(p_BotId)
 end
 
 function FunBotServer:OnRequestClientSettings(p_Player)
@@ -630,7 +633,7 @@ function FunBotServer:OnConsoleCommandRestore(p_Player, p_Args)
 end
 
 function FunBotServer:OnSpawnGrenade(p_Player, p_Args)
-	local position = p_Player.soldier.transform.trans:Clone()
+	local position = p_Player.soldier.worldTransform.trans:Clone()
 	position.y = position.y + 0.1
 
 	m_Logger:Write("Grenade spawn at " .. tostring(position))
@@ -642,7 +645,10 @@ function FunBotServer:OnDestroyObstaclesTest(p_Player, p_Args)
 end
 
 function FunBotServer:SpawnGrenade(p_Position)
-	resource = ResourceManager:SearchForDataContainer('Weapons/M67/M67_Projectile')
+	local resource = ResourceManager:SearchForDataContainer('Weapons/M67/M67_Projectile')
+	if not resource then
+		return
+	end
 
 	local creationParams = EntityCreationParams()
 	creationParams.transform = LinearTransform()
